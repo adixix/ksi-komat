@@ -35,9 +35,9 @@ export default function BookForm({ initial = null, onSubmit, onCancel }) {
   const scannerRef = useRef(null);
   const scannerDivId = 'isbn-scanner';
 
-  const doLookup = async (e) => {
+  const doLookup = async (e, explicitIsbn) => {
     e?.preventDefault();
-    const clean = isbn.replace(/[^0-9Xx]/g, '');
+    const clean = (explicitIsbn || isbn).replace(/[^0-9Xx]/g, '');
     if (clean.length !== 10 && clean.length !== 13) {
       setError('Podaj poprawny ISBN (10 lub 13 cyfr).');
       return;
@@ -125,26 +125,47 @@ export default function BookForm({ initial = null, onSubmit, onCancel }) {
     setScanning(false);
   };
 
-  const startScanner = async () => {
+  const startScanner = () => {
     setError('');
-    try {
-      const { Html5Qrcode } = await import('html5-qrcode');
-      scannerRef.current = new Html5Qrcode(scannerDivId);
-      await scannerRef.current.start(
-        { facingMode: 'environment' },
-        { fps: 10, qrbox: { width: 240, height: 160 } },
-        (text) => {
-          setIsbn(text);
-          stopScanner();
-          doLookup();
-        },
-        () => {}
-      );
-      setScanning(true);
-    } catch (err) {
-      setError('Nie udało się uruchomić kamery: ' + (err.message || err));
-    }
+    setScanning(true);
   };
+
+  useEffect(() => {
+    if (!scanning) return undefined;
+    let disposed = false;
+    const init = async () => {
+      try {
+        const { Html5Qrcode } = await import('html5-qrcode');
+        if (disposed) return;
+        const scanner = new Html5Qrcode(scannerDivId);
+        scannerRef.current = scanner;
+        await scanner.start(
+          { facingMode: 'environment' },
+          { fps: 10, qrbox: { width: 240, height: 160 } },
+          (text) => {
+            if (disposed) return;
+            setIsbn(text);
+            setScanning(false);
+            doLookup(null, text);
+          },
+          () => {}
+        );
+      } catch (err) {
+        if (disposed) return;
+        setError('Nie udało się uruchomić kamery: ' + (err.message || err));
+        setScanning(false);
+      }
+    };
+    init();
+    return () => {
+      disposed = true;
+      if (scannerRef.current) {
+        scannerRef.current.stop().catch(() => {});
+        scannerRef.current.clear().catch(() => {});
+        scannerRef.current = null;
+      }
+    };
+  }, [scanning]);
 
   useEffect(() => () => stopScanner(), []);
 
