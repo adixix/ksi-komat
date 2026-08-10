@@ -33,11 +33,12 @@ export default function BookForm({ initial = null, onSubmit, onCancel }) {
   const [coverQuery, setCoverQuery] = useState('');
   const [coverAuthor, setCoverAuthor] = useState('');
   const scannerRef = useRef(null);
+  const scannedRef = useRef(false);
   const scannerDivId = 'isbn-scanner';
 
   const doLookup = async (e, explicitIsbn) => {
     e?.preventDefault();
-    const clean = (explicitIsbn || isbn).replace(/[^0-9Xx]/g, '');
+    const clean = (typeof explicitIsbn === 'string' && explicitIsbn ? explicitIsbn : isbn).replace(/[^0-9Xx]/g, '');
     if (clean.length !== 10 && clean.length !== 13) {
       setError('Podaj poprawny ISBN (10 lub 13 cyfr).');
       return;
@@ -126,6 +127,7 @@ export default function BookForm({ initial = null, onSubmit, onCancel }) {
   };
 
   const startScanner = () => {
+    scannedRef.current = false;
     setError('');
     setScanning(true);
   };
@@ -143,7 +145,8 @@ export default function BookForm({ initial = null, onSubmit, onCancel }) {
           { facingMode: 'environment' },
           { fps: 10, qrbox: { width: 240, height: 160 } },
           (text) => {
-            if (disposed) return;
+            if (disposed || scannedRef.current) return;
+            scannedRef.current = true;
             setIsbn(text);
             setScanning(false);
             doLookup(null, text);
@@ -216,6 +219,7 @@ export default function BookForm({ initial = null, onSubmit, onCancel }) {
             </button>
           </div>
           {scanning && <div id={scannerDivId} className="scanner" />}
+          {lookup === 'loading' && <p className="muted">Szukam danych w Open Library…</p>}
           {lookup === 'notfound' && (
             <p className="muted">Nie znaleziono w Open Library — uzupełnij dane ręcznie.</p>
           )}

@@ -4,8 +4,8 @@
   "description": "Domowy spis inwentaryzacyjny biblioteczki",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#0f172a",
-  "theme_color": "#1e293b",
+  "background_color": "#2f1b0a",
+  "theme_color": "#3d2713",
   "lang": "pl",
   "icons": [
     {

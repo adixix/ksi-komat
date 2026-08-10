@@ -671,3 +671,114 @@ textarea::placeholder {
 .modal-inner h2 {
   margin-top: 0;
 }
+
+/* mobile */
+@media (max-width: 640px) {
+  .app {
+    padding: 0 12px 32px;
+  }
+
+  header {
+    padding: 12px 0 10px;
+  }
+
+  header h1 {
+    font-size: 1.15rem;
+  }
+
+  .email {
+    display: none;
+  }
+
+  .tabs {
+    gap: 6px;
+    margin: 10px 0 14px;
+  }
+
+  .tab {
+    flex: 1;
+    text-align: center;
+    padding: 10px 6px;
+    font-size: 0.85rem;
+    white-space: nowrap;
+  }
+
+  .toolbar .search {
+    min-width: 100%;
+  }
+
+  .toolbar select {
+    width: 100%;
+  }
+
+  .book-grid {
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 16px;
+    padding: 16px 12px 24px;
+  }
+
+  .book {
+    flex-direction: column;
+    padding: 12px 12px 16px;
+  }
+
+  .book .cover {
+    width: 100%;
+    height: auto;
+    aspect-ratio: 2 / 3;
+  }
+
+  .filter-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .filter-row .sort {
+    margin-left: 0;
+    width: 100%;
+  }
+
+  .row {
+    flex-direction: column;
+  }
+
+  .isbn-box .row {
+    flex-direction: row;
+  }
+
+  .isbn-box .row .grow {
+    flex: 1 1 100%;
+  }
+
+  .row.actions .btn {
+    width: 100%;
+  }
+
+  .btn {
+    min-height: 44px;
+  }
+
+  .btn.sm {
+    min-height: 34px;
+  }
+
+  .modal {
+    padding: 8px;
+    align-items: flex-end;
+  }
+
+  .modal-inner {
+    max-height: 92vh;
+    overflow-y: auto;
+    border-radius: 14px 14px 0 0;
+    padding: 16px;
+  }
+
+  .cover-grid {
+    grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
+  }
+
+  .work {
+    align-items: flex-start;
+  }
+}
