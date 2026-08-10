@@ -35,6 +35,39 @@ const parseYear = (value) => {
   return m ? Number(m[0]) : null;
 };
 
+// Wyszukiwanie po tytule/tytule+autorze (fallback, gdy ISBN jest nieznany
+// w Open Library i Google Books — np. polskie pocket'y). Zwraca listę lub null.
+export async function searchGoogleBooks(q) {
+  if (!API_KEY) return null;
+  const cacheKey = `google-search:${q.toLowerCase().replace(/\s+/g, ' ').trim()}`;
+  return withCache(cacheKey, async () => {
+    const url = `${BASE}/volumes?q=${encodeURIComponent(q)}&maxResults=20&key=${encodeURIComponent(API_KEY)}`;
+    const res = await fetch(url);
+    if (!res.ok) return null;
+    const json = await res.json();
+    if (!json.items) return [];
+    return json.items
+      .filter((it) => it.kind === 'books#volume' && it.volumeInfo?.title)
+      .map((it) => {
+        const vi = it.volumeInfo;
+        const ids = vi.industryIdentifiers || [];
+        const isbn =
+          ids.find((x) => x.type === 'ISBN_13') || ids.find((x) => x.type === 'ISBN_10') || null;
+        return {
+          id: it.id,
+          title: vi.title,
+          author: (vi.authors || []).join(', ') || null,
+          publisher: vi.publisher || null,
+          publishYear: parseYear(vi.publishedDate),
+          isbn: isbn ? isbn.identifier : null,
+          coverUrl:
+            (vi.imageLinks && (vi.imageLinks.thumbnail || vi.imageLinks.smallThumbnail)) || null,
+        };
+      })
+      .sort((a, b) => (b.isbn ? 1 : 0) - (a.isbn ? 1 : 0) || (b.author ? 1 : 0) - (a.author ? 1 : 0));
+  });
+}
+
 // Fallback używany tylko, gdy Open Library nie zna ISBN.
 // Zwraca znormalizowany rekord (bez kluczy OL) albo null.
 export async function getBookFromGoogleByISBN(isbn) {

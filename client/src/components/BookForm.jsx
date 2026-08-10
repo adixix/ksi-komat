@@ -8,7 +8,7 @@ const STATUSES = [
   { id: 'loaned', label: 'Wypożyczona' },
 ];
 
-export default function BookForm({ initial = null, onSubmit, onCancel }) {
+export default function BookForm({ initial = null, onSubmit, onCancel, allowSaveAndNew = false }) {
   const [isbn, setIsbn] = useState(initial?.isbn || '');
   const [lookup, setLookup] = useState(initial ? 'loaded' : 'idle');
   const [title, setTitle] = useState(initial?.title || '');
@@ -32,6 +32,12 @@ export default function BookForm({ initial = null, onSubmit, onCancel }) {
   const [coverLoading, setCoverLoading] = useState(false);
   const [coverQuery, setCoverQuery] = useState('');
   const [coverAuthor, setCoverAuthor] = useState('');
+  const [gbQuery, setGbQuery] = useState('');
+  const [gbList, setGbList] = useState([]);
+  const [gbLoading, setGbLoading] = useState(false);
+  const [wdQuery, setWdQuery] = useState('');
+  const [wdList, setWdList] = useState([]);
+  const [wdLoading, setWdLoading] = useState(false);
   const scannerRef = useRef(null);
   const scannedRef = useRef(false);
   const scannerDivId = 'isbn-scanner';
@@ -44,6 +50,8 @@ export default function BookForm({ initial = null, onSubmit, onCancel }) {
       return;
     }
     setError('');
+    setGbList([]);
+    setWdList([]);
     setBusy(true);
     setLookup('loading');
     try {
@@ -117,6 +125,84 @@ export default function BookForm({ initial = null, onSubmit, onCancel }) {
     }
   };
 
+  const searchGB = async () => {
+    const q = gbQuery.trim();
+    if (!q) return;
+    setGbLoading(true);
+    setError('');
+    try {
+      const list = await API.post('/api/books/gb-search', { q });
+      setGbList(list);
+      if (!list.length) setError('Brak wyników w Google Books — wpisz dane ręcznie.');
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setGbLoading(false);
+    }
+  };
+
+  const pickGB = (r) => {
+    setTitle(r.title || '');
+    setAuthor(r.author || '');
+    setPublisher(r.publisher || '');
+    setPublishYear(r.publishYear || '');
+    setCoverUrl(r.coverUrl || '');
+    setAuthorKey(null);
+    setWorkKey(null);
+    setAuthorMatched(null);
+    setLookup('done');
+    setGbList([]);
+    setGbQuery('');
+  };
+
+  const searchWD = async () => {
+    const q = wdQuery.trim();
+    if (!q) return;
+    setWdLoading(true);
+    setError('');
+    try {
+      const list = await API.post('/api/books/wikidata-search', { title: q });
+      setWdList(list);
+      if (!list.length) setError('Brak wyników w Wikidacie — wpisz dane ręcznie.');
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setWdLoading(false);
+    }
+  };
+
+  const pickWD = (r) => {
+    setTitle(r.title || '');
+    setAuthor(r.author || '');
+    setPublisher(r.publisher || '');
+    setPublishYear(r.publishYear || '');
+    setCoverUrl(r.coverUrl || '');
+    setAuthorKey(r.authorKey || null);
+    setWorkKey(r.workKey || null);
+    setAuthorMatched(r.authorKey ? { name: r.author } : null);
+    setLookup('done');
+    setWdList([]);
+    setWdQuery('');
+    setGbList([]);
+    setGbQuery('');
+  };
+
+  const runWdCoverSearch = async () => {
+    setCoverLoading(true);
+    try {
+      const list = await API.post('/api/books/wikidata-covers', {
+        title: coverQuery,
+        author: coverAuthor,
+      });
+      setCoverList(list);
+      if (!list.length) setError('Brak okładek z Commons — spróbuj innego tytułu.');
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setCoverLoading(false);
+    }
+  };
+
   const stopScanner = () => {
     if (scannerRef.current) {
       try {
@@ -172,7 +258,28 @@ export default function BookForm({ initial = null, onSubmit, onCancel }) {
 
   useEffect(() => () => stopScanner(), []);
 
-  const submit = async (e) => {
+  const resetForm = () => {
+    setIsbn('');
+    setLookup('idle');
+    setTitle('');
+    setAuthor('');
+    setPublisher('');
+    setPublishYear('');
+    setEdition('');
+    setNotes('');
+    setStatus('owned');
+    setCoverUrl('');
+    setAuthorKey(null);
+    setWorkKey(null);
+    setAuthorMatched(null);
+    setGbQuery('');
+    setGbList([]);
+    setWdQuery('');
+    setWdList([]);
+    setError('');
+  };
+
+  const submit = async (e, andNew = false) => {
     e.preventDefault();
     setError('');
     setBusy(true);
@@ -190,6 +297,7 @@ export default function BookForm({ initial = null, onSubmit, onCancel }) {
         authorKey,
         workKey,
       });
+      if (andNew) resetForm();
     } catch (err) {
       setError(err.message);
     } finally {
@@ -221,7 +329,70 @@ export default function BookForm({ initial = null, onSubmit, onCancel }) {
           <div id={scannerDivId} className="scanner" style={scanning ? undefined : { display: 'none' }} />
           {lookup === 'loading' && <p className="muted">Szukam danych w Open Library…</p>}
           {lookup === 'notfound' && (
-            <p className="muted">Nie znaleziono w Open Library — uzupełnij dane ręcznie.</p>
+            <div className="gb-search">
+              <p className="muted">
+                Nie znaleziono o tym ISBN w Open Library ani Google Books — wyszukaj po tytule:
+              </p>
+              <div className="row">
+                <input
+                  className="grow"
+                  placeholder="Tytuł lub autor…"
+                  value={gbQuery}
+                  onChange={(e) => setGbQuery(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && searchGB()}
+                />
+                <button type="button" className="btn secondary" onClick={searchGB} disabled={gbLoading}>
+                  {gbLoading ? '…' : 'Szukaj w Google Books'}
+                </button>
+              </div>
+              {gbList.length > 0 && (
+                <div className="cover-grid">
+                  {gbList.map((r) => (
+                    <button type="button" key={r.id} className="cover-option" onClick={() => pickGB(r)}>
+                      {r.coverUrl ? (
+                        <img src={r.coverUrl} alt={r.title} loading="lazy" />
+                      ) : (
+                        <div className="cover-option-placeholder">📕</div>
+                      )}
+                      <span>
+                        {r.title}
+                        {r.publishYear ? ` (${r.publishYear})` : ''}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              )}
+              <div className="row" style={{ marginTop: 10 }}>
+                <input
+                  className="grow"
+                  placeholder="Tytuł lub autor (Wikidata)…"
+                  value={wdQuery}
+                  onChange={(e) => setWdQuery(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && searchWD()}
+                />
+                <button type="button" className="btn secondary" onClick={searchWD} disabled={wdLoading}>
+                  {wdLoading ? '…' : 'Szukaj w Wikidacie'}
+                </button>
+              </div>
+              {wdList.length > 0 && (
+                <div className="cover-grid">
+                  {wdList.map((r) => (
+                    <button type="button" key={r.id} className="cover-option" onClick={() => pickWD(r)}>
+                      {r.coverUrl ? (
+                        <img src={r.coverUrl} alt={r.title} loading="lazy" />
+                      ) : (
+                        <div className="cover-option-placeholder">📕</div>
+                      )}
+                      <span>
+                        {r.title}
+                        {r.publishYear ? ` (${r.publishYear})` : ''}
+                        {r.workKey ? ' · OL ✓' : ''}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
           )}
         </fieldset>
       )}
@@ -319,6 +490,11 @@ export default function BookForm({ initial = null, onSubmit, onCancel }) {
         <button className="btn primary" disabled={busy}>
           {busy ? '…' : initial ? 'Zapisz' : 'Dodaj do półki'}
         </button>
+        {!initial && allowSaveAndNew && (
+          <button type="button" className="btn secondary" disabled={busy} onClick={(e) => submit(e, true)}>
+            {busy ? '…' : 'Zapisz i dodaj nową'}
+          </button>
+        )}
         {onCancel && (
           <button type="button" className="btn ghost" onClick={onCancel}>
             Anuluj
@@ -357,6 +533,14 @@ export default function BookForm({ initial = null, onSubmit, onCancel }) {
               >
                 {coverLoading ? '…' : 'Szukaj'}
               </button>
+              <button
+                type="button"
+                className="btn secondary"
+                disabled={coverLoading}
+                onClick={runWdCoverSearch}
+              >
+                {coverLoading ? '…' : 'Wikidata'}
+              </button>
             </div>
             {coverLoading ? (
               <p className="muted">Szukanie w Open Library…</p>
@@ -367,7 +551,7 @@ export default function BookForm({ initial = null, onSubmit, onCancel }) {
                 {coverList.map((c) => (
                   <button
                     type="button"
-                    key={c.workKey}
+                    key={c.workKey || c.id}
                     className={`cover-option ${c.coverUrl === coverUrl ? 'selected' : ''}`}
                     onClick={() => {
                       setCoverUrl(c.coverUrl);

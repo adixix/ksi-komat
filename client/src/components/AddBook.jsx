@@ -19,7 +19,7 @@ export default function AddBook({ onAdded }) {
         z Open Library i możesz je poprawić ręcznie.
       </p>
       {message && <p className="success">{message}</p>}
-      <BookForm onSubmit={add} />
+      <BookForm onSubmit={add} allowSaveAndNew />
     </div>
   );
 }

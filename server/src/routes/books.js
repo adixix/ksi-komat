@@ -1,7 +1,12 @@
 import { Router } from 'express';
 import pool from '../db.js';
 import { getBookByISBN, normalizeISBN, resolveAuthorByName, searchCovers } from '../ol.js';
-import { getBookFromGoogleByISBN, googleBooksEnabled } from '../googlebooks.js';
+import { getBookFromGoogleByISBN, googleBooksEnabled, searchGoogleBooks } from '../googlebooks.js';
+import {
+  resolveAuthorByName as resolveAuthorByNameWikidata,
+  searchBooks as searchBooksWikidata,
+  searchCovers as searchCoversWikidata,
+} from '../wikidata.js';
 
 const router = Router();
 
@@ -99,18 +104,60 @@ router.post('/cover-search', async (req, res) => {
   }
 });
 
+router.post('/gb-search', async (req, res) => {
+  const q = (req.body?.q || '').trim();
+  if (!q) return res.status(400).json({ error: 'Podaj tytuł lub autora.' });
+  try {
+    const list = await searchGoogleBooks(q);
+    if (!list) return res.status(502).json({ error: 'Google Books nie odpowiada.' });
+    res.json(list);
+  } catch (err) {
+    res.status(502).json({ error: `Google Books nie odpowiada: ${err.message}` });
+  }
+});
+
+router.post('/wikidata-search', async (req, res) => {
+  const { title = '', author = '' } = req.body || {};
+  if (!String(title).trim() && !String(author).trim()) {
+    return res.status(400).json({ error: 'Podaj tytuł lub autora.' });
+  }
+  try {
+    const list = await searchBooksWikidata({ title, author });
+    res.json(list);
+  } catch (err) {
+    res.status(502).json({ error: `Wikidata nie odpowiada: ${err.message}` });
+  }
+});
+
+router.post('/wikidata-covers', async (req, res) => {
+  const { title = '', author = '' } = req.body || {};
+  try {
+    const list = await searchCoversWikidata({ title, author });
+    res.json(list);
+  } catch (err) {
+    res.status(502).json({ error: `Wikidata nie odpowiada: ${err.message}` });
+  }
+});
+
 router.post('/resolve-author', async (req, res) => {
   const author = (req.body?.author || '').trim();
   if (!author) return res.status(400).json({ error: 'Podaj nazwisko autora.' });
   try {
-    const r = await resolveAuthorByName(author);
+    let r = null;
+    try {
+      r = await resolveAuthorByName(author);
+    } catch {
+      // próbujemy dalej w Wikidacie
+    }
+    if (!r) r = await resolveAuthorByNameWikidata(author);
     res.json(r || { key: null, name: null });
   } catch (err) {
     res.status(502).json({ error: `Open Library nie odpowiada: ${err.message}` });
   }
 });
 
-router.post('/lookup', async (req, res) => {  const isbn = normalizeISBN(req.body?.isbn);
+router.post('/lookup', async (req, res) => {
+  const isbn = normalizeISBN(req.body?.isbn);
   if (!isbn) return res.status(400).json({ error: 'Nieprawidłowy ISBN.' });
   try {
     const entry = await getBookByISBN(isbn);

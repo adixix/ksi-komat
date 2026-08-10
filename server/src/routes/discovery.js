@@ -1,6 +1,11 @@
 import { Router } from 'express';
 import pool from '../db.js';
 import { getAuthorWorks, getWorkEditions, getWork, resolveAuthorByName } from '../ol.js';
+import {
+  resolveAuthorByName as resolveAuthorByNameWikidata,
+  getAuthorWorks as getAuthorWorksWikidata,
+  olAuthorToQid,
+} from '../wikidata.js';
 import { getOwnedKeys, parseYear } from './books.js';
 
 const router = Router();
@@ -24,6 +29,7 @@ async function getMissingBooks(userId) {
   const ownedIsbns = new Set(ownedIsbnsRows.map((r) => r.isbn));
 
   const missing = [];
+  const seenWorkKeys = new Set(ownedWorkKeys);
   for (const { author_key, author } of authorRows) {
     let works;
     try {
@@ -33,7 +39,8 @@ async function getMissingBooks(userId) {
     }
     const entries = works.entries || [];
     for (const w of entries) {
-      if (ownedWorkKeys.has(w.key)) continue;
+      if (seenWorkKeys.has(w.key)) continue;
+      seenWorkKeys.add(w.key);
       const isbn = w.isbn || (w.isbn_13 && w.isbn_13[0]);
       if (isbn && ownedIsbns.has(isbn)) continue;
       missing.push({
@@ -43,7 +50,29 @@ async function getMissingBooks(userId) {
         title: w.title,
         firstPublishYear: w.first_publish_year || null,
         coverUrl: coverFromId(w.cover_i),
+        source: 'ol',
       });
+    }
+    try {
+      const qid = await olAuthorToQid(author_key);
+      if (qid) {
+        const wdWorks = await getAuthorWorksWikidata(qid);
+        for (const w of wdWorks) {
+          if (!w.workKey || seenWorkKeys.has(w.workKey)) continue;
+          seenWorkKeys.add(w.workKey);
+          missing.push({
+            authorKey: author_key,
+            author,
+            workKey: w.workKey,
+            title: w.title,
+            firstPublishYear: w.firstPublishYear || null,
+            coverUrl: null,
+            source: 'wikidata',
+          });
+        }
+      }
+    } catch {
+      // dzieła z Wikidaty to opcjonalne wzbogacenie
     }
   }
   missing.sort((a, b) => a.author.localeCompare(b.author) || (a.firstPublishYear || 0) - (b.firstPublishYear || 0));
@@ -119,7 +148,13 @@ async function backfillAuthorKeys(userId) {
   let resolved = 0;
   for (const row of rows) {
     try {
-      const r = await resolveAuthorByName(row.author);
+      let r = null;
+      try {
+        r = await resolveAuthorByName(row.author);
+      } catch {
+        // próbujemy dalej w Wikidacie
+      }
+      if (!r) r = await resolveAuthorByNameWikidata(row.author);
       if (r) {
         await pool.query('UPDATE books SET author_key = ? WHERE id = ?', [r.key, row.id]);
         resolved++;

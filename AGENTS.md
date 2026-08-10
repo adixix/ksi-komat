@@ -17,7 +17,7 @@ Interfejs i komunikaty są w języku polskim.
 - **Backend:** Node.js 20 (ESM, `"type": "module"`), Express 4, `mysql2` (MariaDB), `express-session` (MemoryStore), `bcryptjs`
 - **Frontend:** React 18 + Vite 5, `html5-qrcode` (skaner ISBN), PWA (manifest + service worker), czysty CSS (bez frameworków UI)
 - **Baza danych:** zdalna **MariaDB** (host `przyba.pl`, port 3306, baza `ksiazkomat`, user `ksiazkomat`). Kodowanie: `utf8mb4` / `utf8mb4_unicode_ci` (zweryfikowane — poprawne).
-- **Źródło danych książek:** Open Library API (bez klucza). Base URL z env `OPENLIBRARY_BASE`. Gdy OL nie zna ISBN, używany jest **fallback Google Books API** (`server/src/googlebooks.js`, klucz z env `GOOGLE_BOOKS_API_KEY`, opcjonalny — bez klucza fallback wyłączony). Wynik z Google nie ma `author_key`/`work_key`.
+- **Źródło danych książek:** Open Library API (bez klucza). Base URL z env `OPENLIBRARY_BASE`. Gdy OL nie zna ISBN, używany jest **fallback Google Books API** (`server/src/googlebooks.js`, klucz z env `GOOGLE_BOOKS_API_KEY`, opcjonalny — bez klucza fallback wyłączony). Wynik z Google nie ma `author_key`/`work_key`. Dodatkowo **Wikidata** (`server/src/wikidata.js`, bez klucza) — wyszukiwanie po tytule z okładkami z Commons i kluczami OL (P648).
 
 ## Komendy
 
@@ -54,7 +54,7 @@ Nowy plik SQL w `server/migrations/` z prefiksem numerycznym (np. `002_*.sql`) �
 ## API
 
 - `POST /api/auth/register|login|logout`, `GET /api/auth/me`
-- `GET /api/books` (query: `q`, `author`, `status`, `sort` ∈ `author|title|year|created|status` domyślnie `author`, `dir` ∈ `asc|desc`), `POST /api/books` (ISBN lub pełne dane), `POST /api/books/lookup` (podgląd danych z OL bez zapisu), `POST /api/books/resolve-author` (autor → klucz OL po nazwisku), `POST /api/books/cover-search` (wyszukiwanie okładek w OL po `title`/`author` do wyboru w UI — `searchCovers` w `ol.js`), `PUT/DELETE /api/books/:id`, `GET /api/books/authors`
+- `GET /api/books` (query: `q`, `author`, `status`, `sort` ∈ `author|title|year|created|status` domyślnie `author`, `dir` ∈ `asc|desc`), `POST /api/books` (ISBN lub pełne dane), `POST /api/books/lookup` (podgląd danych z OL bez zapisu), `POST /api/books/resolve-author` (autor → klucz OL po nazwisku; OL z fallbackiem na Wikidata), `POST /api/books/cover-search` (wyszukiwanie okładek w OL po `title`/`author` do wyboru w UI — `searchCovers` w `ol.js`), `POST /api/books/gb-search` (szukanie po tytule w Google Books), `POST /api/books/wikidata-search` (szukanie po tytule w Wikidacie z okładkami i kluczami OL z P648), `POST /api/books/wikidata-covers` (okładki z Commons), `PUT/DELETE /api/books/:id`, `GET /api/books/authors`
 - `GET /api/discovery/missing`, `GET /api/discovery/new-editions`, `POST /api/discovery/refresh` (zapisuje do `notification_events`; zwraca też `resolvedAuthors` — liczba uzupełnionych `author_key` przez backfill), `GET /api/discovery/notifications`, `POST /api/discovery/notifications/:id/seen`
 - `GET /feed.rss?token=<FEED_TOKEN>` (RSS 2.0, bez autoryzacji sesyjnej)
 - Auth: sesja oparta o cookie; endpointy `/api/books` i `/api/discovery` wymagają `req.session.userId`.
@@ -84,6 +84,23 @@ Rok wydania wyciągamy z `publish_date` regexem `\b(19|20)\d{2}\b` (`parseYear` 
 Uwaga: `ol_cache` ma TTL (isbn 14 dni) — zmiany logiki parsowania nie obejmą już zbuforowanych wpisów; przy testowaniu nowych zachowań wyczyść `ol_cache`. Wartości `null` nie są cache'owane (chwilowy błąd API nie blokuje poprawnego wyniku na TTL).
 
 **Fallback Google Books** (`googlebooks.js`): `GET {BASE}/volumes?q=isbn:{isbn}&key={klucz}` — używany w `POST /api/books/lookup` i `POST /api/books`, gdy OL nie zna ISBN. Wynik ma `author_key: null` i `work_key: null` (Google nie podaje kluczy OL). Cache: `google-isbn:{isbn}`, tylko wyniki niepuste.
+
+## Wikidata — jak to działa
+
+`server/src/wikidata.js` — klient bez klucza API, cache w `ol_cache` (klucze `wd:*`, TTL 7 dni; `null` nie cache'owane).
+
+Wzorce endpointów:
+- wyszukiwanie po tytule → `GET https://www.wikidata.org/w/api.php?action=wbsearchentities&search=<fraza>&language=pl&type=item&limit=8` (szuka po tytule; **autor w frazie pogarsza wyniki** — podajemy tytuł, a autora filtrujemy przez claims),
+- dane encji (batch do 50 QID) → `action=wbgetentities&ids=Q1|Q2&props=claims|labels&languages=pl|en`
+- dzieła autora / odwrotne mapowanie OL→QID → SPARQL `https://query.wikidata.org/sparql` (`P50`, `P648`)
+
+Wykorzystywane właściwości: **P50** autor, **P577** data (rok), **P123** wydawca, **P212/P957** ISBN-13/10 (rzadko — nie używamy do lookupu ISBN), **P648** Open Library ID (u dzieł kończy się na `W` → `/works/OL…`, u autorów na `A` → `/authors/OL…`), **P18** okładka z Commons (`https://commons.wikimedia.org/wiki/Special:FilePath/<plik>?width=300`).
+
+Zastosowania:
+- `POST /api/books/wikidata-search` — wyszukiwanie po tytule w UI (obok Google Books); wybór wyniku może **ustawić `author_key`/`work_key`** (przez P648), więc książka trafia do wykrywania braków/nowych wydań (Google tego nie daje),
+- `POST /api/books/wikidata-covers` — okładki z Commons w modalu okładek,
+- `resolve-author` i backfill w `refresh` — fallback, gdy OL nie znajdzie autora (P648),
+- `getMissingBooks` — dociąga dzieła autora z Wikidaty (SPARQL `P50`), dedup po `work_key`; rekord ma `source: 'wikidata'`. Uwaga: P648 w Wikidacie jest rzadkie, więc supplement jest zwykle mały.
 
 ## GitHub / eksport — zasady
 
