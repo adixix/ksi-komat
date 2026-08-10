@@ -119,8 +119,12 @@ export default function BookForm({ initial = null, onSubmit, onCancel }) {
 
   const stopScanner = () => {
     if (scannerRef.current) {
-      scannerRef.current.stop().catch(() => {});
-      scannerRef.current.clear().catch(() => {});
+      try {
+        scannerRef.current.stop().catch(() => {});
+      } catch {}
+      try {
+        scannerRef.current.clear().catch(() => {});
+      } catch {}
       scannerRef.current = null;
     }
     setScanning(false);
@@ -162,11 +166,7 @@ export default function BookForm({ initial = null, onSubmit, onCancel }) {
     init();
     return () => {
       disposed = true;
-      if (scannerRef.current) {
-        scannerRef.current.stop().catch(() => {});
-        scannerRef.current.clear().catch(() => {});
-        scannerRef.current = null;
-      }
+      stopScanner();
     };
   }, [scanning]);
 
@@ -218,7 +218,7 @@ export default function BookForm({ initial = null, onSubmit, onCancel }) {
               {scanning ? 'Zatrzymaj' : 'Skanuj 📷'}
             </button>
           </div>
-          {scanning && <div id={scannerDivId} className="scanner" />}
+          <div id={scannerDivId} className="scanner" style={scanning ? undefined : { display: 'none' }} />
           {lookup === 'loading' && <p className="muted">Szukam danych w Open Library…</p>}
           {lookup === 'notfound' && (
             <p className="muted">Nie znaleziono w Open Library — uzupełnij dane ręcznie.</p>
