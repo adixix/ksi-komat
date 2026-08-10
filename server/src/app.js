@@ -88,5 +88,5 @@ app.use((err, req, res, next) => {
 });
 
 app.listen(PORT, () => {
-  console.log(`Ksiazkomat API na http://localhost:${PORT} (${isProd ? 'prod' : 'dev'})`);
+  console.log(`Książkomat API na http://localhost:${PORT} (${isProd ? 'prod' : 'dev'})`);
 });

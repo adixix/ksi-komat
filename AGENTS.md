@@ -1,10 +1,10 @@
-# AGENTS.md — Ksiazkomat
+# AGENTS.md — Książkomat
 
 Przewodnik dla agentów/asystentów pracujących w tym repozytorium.
 
 ## Opis projektu
 
-Ksiazkomat to domowy spis inwentaryzacyjny biblioteczki (PWA). Pozwala:
+Książkomat to domowy spis inwentaryzacyjny biblioteczki (PWA). Pozwala:
 - dodawać książki ręcznie, po ISBN (Open Library) lub przez skaner kodu kreskowego,
 - przeglądać półkę (wyszukiwanie, filtry, statusy, edycja),
 - wykrywać **brakujące książki autorów** z półki oraz **nowsze wydania** posiadanych tytułów,
@@ -85,6 +85,8 @@ Uwaga: `ol_cache` ma TTL (isbn 14 dni) — zmiany logiki parsowania nie obejmą 
 
 **Fallback Google Books** (`googlebooks.js`): `GET {BASE}/volumes?q=isbn:{isbn}&key={klucz}` — używany w `POST /api/books/lookup` i `POST /api/books`, gdy OL nie zna ISBN. Wynik ma `author_key: null` i `work_key: null` (Google nie podaje kluczy OL). Cache: `google-isbn:{isbn}`, tylko wyniki niepuste.
 
+**Fallback Wikidata po ISBN** (`wikidata.js`, `getBookByISBN`): gdy OL i Google nie znają ISBN — SPARQL po **P212** (ISBN-13) / **P957** (ISBN-10), z obsługą zapisu z myślnikami w Wikidacie (próba bez i z myślnikami). Zwraca `isbn/title/author/authorKey/workKey/publisher/publishYear/coverUrl` (P648 → klucze OL, gdy są). Cache: `wd-isbn:{isbn}`. Używany w `POST /api/books/lookup` i `POST /api/books`.
+
 ## Wikidata — jak to działa
 
 `server/src/wikidata.js` — klient bez klucza API, cache w `ol_cache` (klucze `wd:*`, TTL 7 dni; `null` nie cache'owane).
@@ -94,12 +96,13 @@ Wzorce endpointów:
 - dane encji (batch do 50 QID) → `action=wbgetentities&ids=Q1|Q2&props=claims|labels&languages=pl|en`
 - dzieła autora / odwrotne mapowanie OL→QID → SPARQL `https://query.wikidata.org/sparql` (`P50`, `P648`)
 
-Wykorzystywane właściwości: **P50** autor, **P577** data (rok), **P123** wydawca, **P212/P957** ISBN-13/10 (rzadko — nie używamy do lookupu ISBN), **P648** Open Library ID (u dzieł kończy się na `W` → `/works/OL…`, u autorów na `A` → `/authors/OL…`), **P18** okładka z Commons (`https://commons.wikimedia.org/wiki/Special:FilePath/<plik>?width=300`).
+Wykorzystywane właściwości: **P50** autor, **P577** data (rok), **P123** wydawca, **P212/P957** ISBN-13/10 (lookup ISBN jako 3. fallback po OL i Google Books), **P648** Open Library ID (u dzieł kończy się na `W` → `/works/OL…`, u autorów na `A` → `/authors/OL…`), **P18** okładka z Commons (`https://commons.wikimedia.org/wiki/Special:FilePath/<plik>?width=300`).
 
 Zastosowania:
 - `POST /api/books/wikidata-search` — wyszukiwanie po tytule w UI (obok Google Books); wybór wyniku może **ustawić `author_key`/`work_key`** (przez P648), więc książka trafia do wykrywania braków/nowych wydań (Google tego nie daje),
 - `POST /api/books/wikidata-covers` — okładki z Commons w modalu okładek,
 - `resolve-author` i backfill w `refresh` — fallback, gdy OL nie znajdzie autora (P648),
+- `getBookByISBN` — 3. fallback lookupu ISBN (po OL i Google Books),
 - `getMissingBooks` — dociąga dzieła autora z Wikidaty (SPARQL `P50`), dedup po `work_key`; rekord ma `source: 'wikidata'`. Uwaga: P648 w Wikidacie jest rzadkie, więc supplement jest zwykle mały.
 
 ## GitHub / eksport — zasady

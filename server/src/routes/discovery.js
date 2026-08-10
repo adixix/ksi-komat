@@ -1,6 +1,12 @@
 import { Router } from 'express';
 import pool from '../db.js';
-import { getAuthorWorks, getWorkEditions, getWork, resolveAuthorByName } from '../ol.js';
+import {
+  getAuthorWorks,
+  getAuthorCovers,
+  getWorkEditions,
+  getWork,
+  resolveAuthorByName,
+} from '../ol.js';
 import {
   resolveAuthorByName as resolveAuthorByNameWikidata,
   getAuthorWorks as getAuthorWorksWikidata,
@@ -37,6 +43,12 @@ async function getMissingBooks(userId) {
     } catch {
       continue;
     }
+    let coverByWork = {};
+    try {
+      coverByWork = await getAuthorCovers(author_key);
+    } catch {
+      // okładki to wzbogacenie — brak nie jest błędem
+    }
     const entries = works.entries || [];
     for (const w of entries) {
       if (seenWorkKeys.has(w.key)) continue;
@@ -49,7 +61,7 @@ async function getMissingBooks(userId) {
         workKey: w.key,
         title: w.title,
         firstPublishYear: w.first_publish_year || null,
-        coverUrl: coverFromId(w.cover_i),
+        coverUrl: coverFromId(w.cover_i || coverByWork[w.key]),
         source: 'ol',
       });
     }
@@ -66,7 +78,7 @@ async function getMissingBooks(userId) {
             workKey: w.workKey,
             title: w.title,
             firstPublishYear: w.firstPublishYear || null,
-            coverUrl: null,
+            coverUrl: coverFromId(coverByWork[w.workKey]),
             source: 'wikidata',
           });
         }

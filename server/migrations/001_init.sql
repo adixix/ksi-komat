@@ -1,5 +1,5 @@
 -- 001_init.sql
--- Schema: Ksiazkomat (MariaDB, utf8mb4)
+-- Schema: Książkomat (MariaDB, utf8mb4)
 
 CREATE TABLE IF NOT EXISTS users (
   id INT UNSIGNED NOT NULL AUTO_INCREMENT,

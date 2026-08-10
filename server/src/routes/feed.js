@@ -55,7 +55,7 @@ router.get('/feed.rss', async (req, res) => {
   const feed = `<?xml version="1.0" encoding="UTF-8"?>
 <rss version="2.0">
   <channel>
-    <title>Ksiazkomat — nowe wydania i brakujące książki</title>
+    <title>Książkomat — nowe wydania i brakujące książki</title>
     <link>${escapeXml(req.protocol)}://${escapeXml(req.get('host'))}</link>
     <description>Domowy spis biblioteczki</description>
     ${max

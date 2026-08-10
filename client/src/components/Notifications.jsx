@@ -30,6 +30,17 @@ export default function Notifications() {
   const [editionFilter, setEditionFilter] = useState([]);
   const [sortMissing, setSortMissing] = useState('author-asc');
   const [sortEditions, setSortEditions] = useState('title-asc');
+  const [expanded, setExpanded] = useState(() => new Set());
+  const [adding, setAdding] = useState(() => new Set());
+  const [added, setAdded] = useState(() => new Set());
+
+  const toggleGroup = (name) =>
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(name)) next.delete(name);
+      else next.add(name);
+      return next;
+    });
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -67,6 +78,31 @@ export default function Notifications() {
     } catch (err) {
       setError(err.message);
       setLoading(false);
+    }
+  };
+
+  const addWanted = async (w) => {
+    setAdding((prev) => new Set(prev).add(w.workKey));
+    setError('');
+    try {
+      await API.post('/api/books', {
+        title: w.title,
+        author: w.author,
+        authorKey: w.authorKey,
+        workKey: w.workKey,
+        publishYear: w.firstPublishYear,
+        coverUrl: w.coverUrl,
+        status: 'wanted',
+      });
+      setAdded((prev) => new Set(prev).add(w.workKey));
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setAdding((prev) => {
+        const next = new Set(prev);
+        next.delete(w.workKey);
+        return next;
+      });
     }
   };
 
@@ -109,6 +145,16 @@ export default function Notifications() {
     }
   };
   const sortedEditions = [...filteredEditions].sort(editionSortFn);
+
+  const groupedEditions = sortedEditions.reduce((acc, e) => {
+    (acc[e.ownedAuthor] = acc[e.ownedAuthor] || []).push(e);
+    return acc;
+  }, {});
+  const editionGroupNames = Object.keys(groupedEditions).sort(localeComparePl);
+
+  const currentGroupNames = tab === 'missing' ? groupNames : editionGroupNames;
+  const expandAll = () => setExpanded(new Set(currentGroupNames));
+  const collapseAll = () => setExpanded(new Set());
 
   const toggleFilter = (list, setter, value) =>
     setter(list.includes(value) ? list.filter((v) => v !== value) : [...list, value]);
@@ -188,53 +234,109 @@ export default function Notifications() {
         groupNames.length === 0 ? (
           <p className="muted">Brak wyników — dodaj książki z powiązanym autorem (np. przez ISBN).</p>
         ) : (
-          groupNames.map((author) => (
-            <section className="group" key={author}>
-              <h3>{author}</h3>
-              <div className="work-list">
-                {grouped[author].map((w) => (
-                  <div className="work" key={w.workKey}>
-                    {w.coverUrl ? (
-                      <img className="cover sm" src={w.coverUrl} alt="" loading="lazy" />
-                    ) : (
-                      <div className="cover placeholder sm">📖</div>
-                    )}
-                    <div>
-                      <p className="title">{w.title}</p>
-                      <p className="meta">
-                        {w.firstPublishYear ? `Pierwsze wydanie: ${w.firstPublishYear}` : '—'}
-                      </p>
+          <>
+            <div className="row actions group-actions">
+              <button type="button" className="btn ghost sm" onClick={collapseAll}>
+                Zwiń wszystkie
+              </button>
+              <button type="button" className="btn ghost sm" onClick={expandAll}>
+                Rozwiń wszystkie
+              </button>
+            </div>
+            {groupNames.map((author) => {
+              const open = expanded.has(author);
+              return (
+                <section className="group" key={author}>
+                  <button type="button" className="group-head" onClick={() => toggleGroup(author)}>
+                    <span className={`group-arrow ${open ? 'open' : ''}`}>▸</span>
+                    <span className="group-name">{author}</span>
+                    <span className="group-count">{grouped[author].length}</span>
+                  </button>
+                  {open && (
+                    <div className="work-list">
+                      {grouped[author].map((w) => (
+                        <div className="work" key={w.workKey}>
+                          {w.coverUrl ? (
+                            <img className="cover sm" src={w.coverUrl} alt="" loading="lazy" />
+                          ) : (
+                            <div className="cover placeholder sm">📖</div>
+                          )}
+                          <div>
+                            <p className="title">{w.title}</p>
+                            <p className="meta">
+                              {w.firstPublishYear ? `Pierwsze wydanie: ${w.firstPublishYear}` : '—'}
+                            </p>
+                          </div>
+                          <button
+                            type="button"
+                            className={`btn sm ${added.has(w.workKey) ? 'ghost' : 'primary'}`}
+                            disabled={adding.has(w.workKey) || added.has(w.workKey)}
+                            onClick={() => addWanted(w)}
+                            style={{ marginLeft: 'auto' }}
+                          >
+                            {adding.has(w.workKey)
+                              ? '…'
+                              : added.has(w.workKey)
+                              ? '✓ Dodano'
+                              : 'Planuję zakup'}
+                          </button>
+                        </div>
+                      ))}
                     </div>
-                  </div>
-                ))}
-              </div>
-            </section>
-          ))
+                  )}
+                </section>
+              );
+            })}
+          </>
         )
       ) : sortedEditions.length === 0 ? (
         <p className="muted">
           Brak nowszych wydań — po uzupełnieniu półki (najlepiej przez ISBN) kliknij „Odśwież dane”.
         </p>
       ) : (
-        <div className="work-list">
-          {sortedEditions.map((e, i) => (
-            <div className="work" key={`${e.workKey}-${e.editionKey || i}`}>
-              {e.coverUrl ? (
-                <img className="cover sm" src={e.coverUrl} alt="" loading="lazy" />
-              ) : (
-                <div className="cover placeholder sm">🆕</div>
-              )}
-              <div>
-                <p className="title">{e.title}</p>
-                <p className="meta">
-                  Nowe wydanie z <strong>{e.publishYear}</strong> (masz z {e.ownedYear}) ·{' '}
-                  {e.ownedAuthor}
-                  {e.isbn ? ` · ISBN ${e.isbn}` : ''}
-                </p>
-              </div>
-            </div>
-          ))}
-        </div>
+        <>
+          <div className="row actions group-actions">
+            <button type="button" className="btn ghost sm" onClick={collapseAll}>
+              Zwiń wszystkie
+            </button>
+            <button type="button" className="btn ghost sm" onClick={expandAll}>
+              Rozwiń wszystkie
+            </button>
+          </div>
+          {editionGroupNames.map((author) => {
+            const open = expanded.has(author);
+            return (
+              <section className="group" key={author}>
+                <button type="button" className="group-head" onClick={() => toggleGroup(author)}>
+                  <span className={`group-arrow ${open ? 'open' : ''}`}>▸</span>
+                  <span className="group-name">{author}</span>
+                  <span className="group-count">{groupedEditions[author].length}</span>
+                </button>
+                {open && (
+                  <div className="work-list">
+                    {groupedEditions[author].map((e, i) => (
+                      <div className="work" key={`${e.workKey}-${e.editionKey || i}`}>
+                        {e.coverUrl ? (
+                          <img className="cover sm" src={e.coverUrl} alt="" loading="lazy" />
+                        ) : (
+                          <div className="cover placeholder sm">🆕</div>
+                        )}
+                        <div>
+                          <p className="title">{e.title}</p>
+                          <p className="meta">
+                            Nowe wydanie z <strong>{e.publishYear}</strong> (masz z {e.ownedYear}) ·{' '}
+                            {e.ownedAuthor}
+                            {e.isbn ? ` · ISBN ${e.isbn}` : ''}
+                          </p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </section>
+            );
+          })}
+        </>
       )}
     </div>
   );

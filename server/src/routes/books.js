@@ -6,6 +6,7 @@ import {
   resolveAuthorByName as resolveAuthorByNameWikidata,
   searchBooks as searchBooksWikidata,
   searchCovers as searchCoversWikidata,
+  getBookByISBN as getBookFromWikidataByISBN,
 } from '../wikidata.js';
 
 const router = Router();
@@ -163,20 +164,24 @@ router.post('/lookup', async (req, res) => {
     const entry = await getBookByISBN(isbn);
     if (!entry) {
       const gb = await getBookFromGoogleByISBN(isbn);
-      if (!gb) {
-        return res.status(404).json({ error: 'Nie znaleziono książki o tym ISBN (Open Library / Google Books).' });
+      if (gb) {
+        return res.json({
+          isbn: gb.isbn,
+          title: gb.title,
+          author: gb.author || 'Nieznany autor',
+          authorKey: null,
+          workKey: null,
+          publisher: gb.publisher,
+          publishYear: gb.publish_year,
+          coverUrl: gb.cover_url,
+          source: 'google',
+        });
       }
-      return res.json({
-        isbn: gb.isbn,
-        title: gb.title,
-        author: gb.author || 'Nieznany autor',
-        authorKey: null,
-        workKey: null,
-        publisher: gb.publisher,
-        publishYear: gb.publish_year,
-        coverUrl: gb.cover_url,
-        source: 'google',
-      });
+      const wd = await getBookFromWikidataByISBN(isbn);
+      if (wd) {
+        return res.json({ ...wd, source: 'wikidata' });
+      }
+      return res.status(404).json({ error: 'Nie znaleziono książki o tym ISBN (Open Library / Google Books / Wikidata).' });
     }
     res.json({
       isbn,
@@ -220,19 +225,33 @@ router.post('/', async (req, res) => {
     }
     if (!entry) {
       const gb = await getBookFromGoogleByISBN(record.isbn);
-      if (!gb) {
-        return res.status(404).json({ error: 'Nie znaleziono książki o tym ISBN (Open Library / Google Books).' });
+      if (gb) {
+        record = {
+          ...record,
+          title: gb.title,
+          author: gb.author || 'Nieznany autor',
+          authorKey: null,
+          workKey: null,
+          publisher: gb.publisher,
+          publishYear: gb.publish_year,
+          coverUrl: gb.cover_url,
+        };
+      } else {
+        const wd = await getBookFromWikidataByISBN(record.isbn);
+        if (!wd) {
+          return res.status(404).json({ error: 'Nie znaleziono książki o tym ISBN (Open Library / Google Books / Wikidata).' });
+        }
+        record = {
+          ...record,
+          title: wd.title,
+          author: wd.author,
+          authorKey: wd.authorKey,
+          workKey: wd.workKey,
+          publisher: wd.publisher,
+          publishYear: wd.publishYear,
+          coverUrl: wd.coverUrl,
+        };
       }
-      record = {
-        ...record,
-        title: gb.title,
-        author: gb.author || 'Nieznany autor',
-        authorKey: null,
-        workKey: null,
-        publisher: gb.publisher,
-        publishYear: gb.publish_year,
-        coverUrl: gb.cover_url,
-      };
     } else {
       record = {
         ...record,

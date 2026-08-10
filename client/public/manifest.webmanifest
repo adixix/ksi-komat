@@ -1,6 +1,6 @@
 {
-  "name": "Ksiazkomat",
-  "short_name": "Ksiazkomat",
+  "name": "Książkomat",
+  "short_name": "Książkomat",
   "description": "Domowy spis inwentaryzacyjny biblioteczki",
   "start_url": "/",
   "display": "standalone",

@@ -139,6 +139,22 @@ export async function getAuthorWorks(authorKey) {
   });
 }
 
+// works.json nie zawiera okładek (cover_i) — pobieramy je osobno z search API
+// po author_key, dopasowując po kluczu dzieła.
+export async function getAuthorCovers(authorKey) {
+  const key = `author-covers:${stripPrefix(authorKey, '/authors/')}`;
+  return withCache(key, 'works', async () => {
+    const json = await fetchJSON(
+      `${BASE}/search.json?author_key=${encodeURIComponent(
+        stripPrefix(authorKey, '/authors/')
+      )}&fields=key,cover_i&limit=500`
+    );
+    const map = {};
+    for (const d of json.docs || []) if (d.cover_i) map[d.key] = d.cover_i;
+    return map;
+  });
+}
+
 export async function getWorkEditions(workKey) {
   const key = `work-editions:${stripPrefix(workKey, '/works/')}`;
   return withCache(key, 'editions', async () => {

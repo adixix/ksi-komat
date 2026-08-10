@@ -143,6 +143,51 @@ export async function searchBooks({ title, author } = {}) {
   });
 }
 
+// Fallback lookupu ISBN: szukamy encji z P212 (ISBN-13) lub P957 (ISBN-10).
+// P212 w Wikidacie bywa zapisany z myślnikami (np. "978-1-350-99999-2") —
+// próbujemy najpierw bez, potem z myślnikami. Zwraca null, gdy brak wyniku.
+export async function getBookByISBN(isbn) {
+  const clean = String(isbn || '').replace(/[^0-9Xx]/g, '').toUpperCase();
+  if (!clean) return null;
+  const cacheKey = `wd-isbn:${clean}`;
+  return withCache(cacheKey, async () => {
+    const pretty = clean.length === 13
+      ? `${clean.slice(0, 3)}-${clean.slice(3, 4)}-${clean.slice(4, 7)}-${clean.slice(7, 12)}-${clean.slice(12)}`
+      : clean;
+    const query = `SELECT ?item WHERE {
+  { ?item wdt:P212 "${clean}". } UNION { ?item wdt:P957 "${clean}". }
+  UNION { ?item wdt:P212 "${pretty}". } UNION { ?item wdt:P957 "${pretty}". }
+} LIMIT 1`;
+    const rows = await sparql(query);
+    if (!rows.length) return null;
+    const qid = bind(rows[0]).item?.replace('http://www.wikidata.org/entity/', '');
+    if (!qid) return null;
+    const entities = await getEntities([qid]);
+    const ent = entities[qid];
+    if (!ent) return null;
+    const item = entityToBook(ent);
+    const authorQids = item.authorQid ? [item.authorQid] : [];
+    const pubQids = item.publisherQid ? [item.publisherQid] : [];
+    const extra = await getEntities([...authorQids, ...pubQids]);
+    const ae = item.authorQid ? extra[item.authorQid] : null;
+    item.author = ae ? plLabel(ae) : null;
+    const aol = ae ? claimValues(ae.claims || {}, 'P648', 'string')[0] : null;
+    item.authorKey = aol && /A$/.test(aol) ? `/authors/${aol}` : null;
+    const pe = item.publisherQid ? extra[item.publisherQid] : null;
+    item.publisher = pe ? plLabel(pe) : null;
+    return {
+      isbn: clean,
+      title: item.title,
+      author: item.author || 'Nieznany autor',
+      authorKey: item.authorKey,
+      workKey: item.workKey,
+      publisher: item.publisher,
+      publishYear: item.publishYear,
+      coverUrl: item.coverUrl,
+    };
+  });
+}
+
 // Autor po nazwisku → klucz Open Library (przez P648) lub null.
 export async function resolveAuthorByName(name) {
   const want = normalizeName(name);

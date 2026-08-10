@@ -620,14 +620,59 @@ textarea::placeholder {
 }
 
 .group {
-  margin-bottom: 20px;
+  margin-bottom: 16px;
 }
 
-.group h3 {
-  color: var(--accent);
-  margin: 14px 0 8px;
+.group-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  background: none;
+  border: none;
   border-bottom: 1px solid var(--border);
-  padding-bottom: 6px;
+  padding: 8px 2px;
+  cursor: pointer;
+  text-align: left;
+  color: inherit;
+  font: inherit;
+}
+
+.group-head:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.group-arrow {
+  display: inline-block;
+  transition: transform 0.15s ease;
+  color: var(--accent);
+}
+
+.group-arrow.open {
+  transform: rotate(90deg);
+}
+
+.group-name {
+  flex: 1;
+  font-weight: 600;
+  color: var(--accent);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.group-count {
+  font-size: 0.8rem;
+  color: var(--muted);
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 1px 10px;
+}
+
+.group-actions {
+  margin-bottom: 4px;
 }
 
 .work-list {

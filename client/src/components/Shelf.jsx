@@ -5,7 +5,7 @@ import BookForm from './BookForm.jsx';
 const STATUS_LABELS = {
   owned: 'Półka',
   read: 'Przeczytana',
-  wanted: 'Chcę',
+  wanted: 'Planuję zakup',
   loaned: 'Wypożyczona',
 };
 

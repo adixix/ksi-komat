@@ -4,7 +4,7 @@ import API from '../api.js';
 const STATUSES = [
   { id: 'owned', label: 'Mam na półce' },
   { id: 'read', label: 'Przeczytana' },
-  { id: 'wanted', label: 'Chcę mieć' },
+  { id: 'wanted', label: 'Planuję zakup' },
   { id: 'loaned', label: 'Wypożyczona' },
 ];
 
@@ -284,19 +284,22 @@ export default function BookForm({ initial = null, onSubmit, onCancel, allowSave
     setError('');
     setBusy(true);
     try {
-      await onSubmit({
-        isbn: isbn || null,
-        title,
-        author,
-        publisher: publisher || null,
-        publishYear: publishYear ? Number(publishYear) : null,
-        edition: edition || null,
-        notes: notes || null,
-        status,
-        coverUrl: coverUrl || null,
-        authorKey,
-        workKey,
-      });
+      await onSubmit(
+        {
+          isbn: isbn || null,
+          title,
+          author,
+          publisher: publisher || null,
+          publishYear: publishYear ? Number(publishYear) : null,
+          edition: edition || null,
+          notes: notes || null,
+          status,
+          coverUrl: coverUrl || null,
+          authorKey,
+          workKey,
+        },
+        andNew
+      );
       if (andNew) resetForm();
     } catch (err) {
       setError(err.message);

@@ -26,7 +26,7 @@ export default function Login({ onLogin }) {
     <div className="auth">
       <form className="card auth-card" onSubmit={submit}>
         <h1>
-          <span className="logo">📚</span> Ksiazkomat
+          <span className="logo">📚</span> Książkomat
         </h1>
         <p className="muted">Domowy spis biblioteczki</p>
         <label>

@@ -35,7 +35,7 @@ export default function App() {
     <div className="app">
       <header>
         <h1>
-          <span className="logo">📚</span> Ksiazkomat
+          <span className="logo">📚</span> Książkomat
         </h1>
         <div className="user">
           <span className="email">{user.email}</span>

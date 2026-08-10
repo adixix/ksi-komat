@@ -5,10 +5,10 @@ import BookForm from './BookForm.jsx';
 export default function AddBook({ onAdded }) {
   const [message, setMessage] = useState('');
 
-  const add = async (data) => {
+  const add = async (data, andNew = false) => {
     await API.post('/api/books', data);
     setMessage(`Dodano: „${data.title}”.`);
-    onAdded();
+    if (!andNew) onAdded();
   };
 
   return (

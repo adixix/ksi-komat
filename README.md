@@ -1,4 +1,4 @@
-# Ksiazkomat 📚
+# Książkomat 📚
 
 Domowy spis inwentaryzacyjny biblioteczki — PWA (działa w przeglądarce na komputerze, Androidzie i iOS).
 
