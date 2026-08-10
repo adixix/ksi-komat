@@ -1,0 +1,16 @@
+{
+  "name": "ksiazkomat",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Domowy spis inwentaryzacyjny biblioteczki — PWA z Open Library",
+  "scripts": {
+    "install:all": "npm --prefix server install && npm --prefix client install",
+    "dev": "concurrently -n server,client -c blue,green \"npm --prefix server run dev\" \"npm --prefix client run dev\"",
+    "build": "npm --prefix client run build",
+    "start": "npm --prefix server start",
+    "db:migrate": "npm --prefix server run db:migrate"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.0"
+  }
+}
