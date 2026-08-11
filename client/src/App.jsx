@@ -5,6 +5,8 @@ import Shelf from './components/Shelf.jsx';
 import AddBook from './components/AddBook.jsx';
 import Notifications from './components/Notifications.jsx';
 
+const BUILD_STAMP = __BUILD_STAMP__ || null;
+
 const TABS = [
   { id: 'shelf', label: 'Półka', icon: '📚' },
   { id: 'add', label: 'Dodaj', icon: '➕' },
@@ -62,6 +64,12 @@ export default function App() {
         {tab === 'add' && <AddBook onAdded={() => setTab('shelf')} />}
         {tab === 'notifications' && <Notifications />}
       </main>
+
+      <footer className="version">
+        {BUILD_STAMP
+          ? `v${BUILD_STAMP.version} · commit ${BUILD_STAMP.commit} · ${new Date(BUILD_STAMP.builtAt).toLocaleString('pl-PL')}`
+          : 'wersja dev (bez buildu)'}
+      </footer>
     </div>
   );
 }

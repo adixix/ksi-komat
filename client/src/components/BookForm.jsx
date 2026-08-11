@@ -308,8 +308,40 @@ export default function BookForm({ initial = null, onSubmit, onCancel, allowSave
     }
   };
 
+  const actionButtons = (
+    <div className="row actions">
+      <button className="btn primary" disabled={busy}>
+        {busy ? '…' : initial ? 'Zapisz' : 'Dodaj do półki'}
+      </button>
+      {!initial && allowSaveAndNew && (
+        <button type="button" className="btn secondary" disabled={busy} onClick={(e) => submit(e, true)}>
+          {busy ? '…' : 'Zapisz i dodaj nową'}
+        </button>
+      )}
+      {onCancel && (
+        <button type="button" className="btn ghost" onClick={onCancel}>
+          Anuluj
+        </button>
+      )}
+    </div>
+  );
+
   return (
     <form className="card form" onSubmit={submit}>
+      {actionButtons}
+      {initial && isbn && (
+        <div className="row actions">
+          <button
+            type="button"
+            className="btn secondary"
+            onClick={() => doLookup(null, isbn)}
+            disabled={busy}
+            title="Pobierz ponownie dane z Open Library / BN / Google Books / Wikidata"
+          >
+            {lookup === 'loading' ? '…' : 'Odśwież dane z ISBN'}
+          </button>
+        </div>
+      )}
       {!initial && (
         <fieldset className="isbn-box">
           <legend>Kod ISBN</legend>
@@ -489,21 +521,7 @@ export default function BookForm({ initial = null, onSubmit, onCancel, allowSave
       </label>
 
       {error && <p className="error">{error}</p>}
-      <div className="row actions">
-        <button className="btn primary" disabled={busy}>
-          {busy ? '…' : initial ? 'Zapisz' : 'Dodaj do półki'}
-        </button>
-        {!initial && allowSaveAndNew && (
-          <button type="button" className="btn secondary" disabled={busy} onClick={(e) => submit(e, true)}>
-            {busy ? '…' : 'Zapisz i dodaj nową'}
-          </button>
-        )}
-        {onCancel && (
-          <button type="button" className="btn ghost" onClick={onCancel}>
-            Anuluj
-          </button>
-        )}
-      </div>
+      {actionButtons}
 
       {coverModal && (
         <div className="modal" onClick={(e) => e.target === e.currentTarget && setCoverModal(false)}>
