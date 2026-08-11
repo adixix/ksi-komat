@@ -13,7 +13,7 @@ Domowy spis inwentaryzacyjny biblioteczki — PWA (działa w przeglądarce na ko
 - **Backend:** Node.js 20, Express, `mysql2` (MariaDB), `express-session`, `bcryptjs`
 - **Frontend:** React 18 + Vite, `html5-qrcode` (skaner), PWA (manifest + service worker)
 - **Baza:** MariaDB (zdalna, `utf8mb4` / `utf8mb4_unicode_ci`)
-- **Dane książek:** [Open Library API](https://openlibrary.org/developers/api) (bez klucza)
+- **Dane książek:** [Open Library API](https://openlibrary.org/developers/api) (bez klucza), z fallbackiem na **Bibliotekę Narodową** ([data.bn.org.pl](https://data.bn.org.pl), bez klucza), **Google Books** (opcjonalny klucz) i **Wikidata** (bez klucza)
 
 ## Wymagania
 
@@ -73,6 +73,9 @@ server/            # API Express
     db.js          # pool mysql2
     migrate.js     # runner migracji
     ol.js          # klient Open Library + cache
+    bn.js          # fallback Biblioteka Narodowa (ISBN)
+    googlebooks.js # fallback Google Books (ISBN + szukanie po tytule)
+    wikidata.js    # Wikidata: szukanie po tytule, okładki, fallback ISBN, transkrypcja autora
     routes/
       auth.js      # rejestracja / logowanie / logout / me
       books.js     # CRUD półki + lookup ISBN

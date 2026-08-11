@@ -273,3 +273,56 @@ export async function searchCovers({ title, author } = {}) {
     .filter((it) => it.coverUrl)
     .map((it) => ({ id: it.id, title: it.title, year: it.publishYear, coverUrl: it.coverUrl }));
 }
+
+// Czy nazwa zawiera cyrylicę (np. rosyjski autor)? Wtedy dopisujemy transkrypcję łacińską.
+export const hasCyrillic = (s) => /[\u0400-\u04FF]/.test(String(s || ''));
+
+// Determinystyczna transkrypcja GOST (cyrylica → łacina) — fallback, gdy
+// Wikidata nie zna autora. Mapa bliska polskiej transkrypcji.
+const GOST_MAP = {
+  а: 'a', б: 'b', в: 'w', г: 'g', д: 'd', е: 'e', ё: 'jo', ж: 'ż', з: 'z',
+  и: 'i', й: 'j', к: 'k', л: 'l', м: 'm', н: 'n', о: 'o', п: 'p', р: 'r',
+  с: 's', т: 't', у: 'u', ф: 'f', х: 'ch', ц: 'c', ч: 'cz', ш: 'sz',
+  щ: 'szcz', ъ: '', ы: 'y', ь: '', э: 'e', ю: 'ju', я: 'ja',
+};
+export function transliterateGost(name) {
+  return String(name || '')
+    .split('')
+    .map((ch) => {
+      const lower = ch.toLowerCase();
+      const out = GOST_MAP[lower];
+      if (out === undefined) return ch;
+      return ch === lower ? out : out.charAt(0).toUpperCase() + out.slice(1);
+    })
+    .join('')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+const latinLabel = (labels, lang) => {
+  const v = labels?.[lang]?.value;
+  return v && !hasCyrillic(v) ? v : null;
+};
+
+// Forma łacińska nazwiska autora po kluczu OL: najpierw pl label z Wikidaty
+// (np. „Dmitrij Głuchowski"), potem en („Dmitry Glukhovsky"), na końcu GOST.
+// Zwraca null, gdy nie uda się nic ustalić (a fallback nie podano).
+export async function getAuthorLatinName(olKey, { fallback } = {}) {
+  const key = String(olKey || '').replace(/^\/authors\//, '');
+  if (key) {
+    try {
+      const qid = await olAuthorToQid(key);
+      if (qid) {
+        const entities = await getEntities([qid]);
+        const ent = entities[qid];
+        const labels = ent?.labels || {};
+        const name = latinLabel(labels, 'pl') || latinLabel(labels, 'en');
+        if (name) return name;
+      }
+    } catch {
+      // Wikidata niedostępna — przechodzimy do fallbacku
+    }
+  }
+  if (fallback && hasCyrillic(fallback)) return transliterateGost(fallback);
+  return null;
+}

@@ -181,6 +181,15 @@ const normalizeName = (s) =>
     .replace(/\s+/g, ' ')
     .trim();
 
+// „Nazwisko, Imię" → „Imię Nazwisko" (dla porównań z OL authors.json).
+const swapNameOrder = (s) => {
+  const parts = String(s || '').split(',');
+  if (parts.length < 2) return s;
+  const rest = parts.slice(1).join(',');
+  const given = rest.replace(/\(.*\)/g, '').trim();
+  return given ? `${given} ${parts[0].trim()}` : s;
+};
+
 const matchAuthor = (given, names) => {
   if (!given) return true;
   const want = normalizeName(given).replace(/\./g, '');
@@ -236,12 +245,75 @@ export async function resolveAuthorByName(name) {
       `${BASE}/search/authors.json?q=${encodeURIComponent(name)}&limit=5`
     );
     const want = normalizeName(name);
+    // BN/OL podają autorów w formie „Nazwisko, Imię", a OL w authors.json
+    // trzyma „Imię Nazwisko" — porównujemy też odwróconą kolejność.
+    const wantSwapped = normalizeName(swapNameOrder(name));
     for (const d of json.docs || []) {
       const have = normalizeName(d.name);
-      if (want && (want === have || have.includes(want) || want.includes(have))) {
+      const haveSwapped = normalizeName(swapNameOrder(d.name));
+      if (
+        want &&
+        (want === have ||
+          want === haveSwapped ||
+          have === wantSwapped ||
+          have.includes(want) ||
+          want.includes(have) ||
+          have.includes(wantSwapped) ||
+          wantSwapped.includes(have))
+      ) {
         return { key: d.key.startsWith('/authors/') ? d.key : `/authors/${d.key}`, name: d.name };
       }
     }
     return null;
   });
+}
+
+// Enrichment rekordu z Biblioteki Narodowej (BN): BN daje czystą metadanę PL,
+// ale bez okładek i kluczy OL. Doczepiamy je z OL — po polskim tytule (dokładne
+// dopasowanie) workKey + okładka, a authorKey przez resolveAuthorByName
+// (który radzi sobie z formą „Nazwisko, Imię"). Oryginalny tytuł (246) to tylko
+// awaryjna druga próba — OL rzadko go zna.
+export async function enrichBN(record) {
+  if (!record) return null;
+  let workKey = null;
+  let coverUrl = null;
+
+  const findWork = async (title) => {
+    if (!title) return null;
+    const want = normalizeName(title);
+    const json = await fetchJSON(
+      `${BASE}/search.json?q=${encodeURIComponent(
+        `title:${title}`
+      )}&fields=key,title,cover_i&limit=10`
+    );
+    const docs = json.docs || [];
+    const exact = docs.filter((d) => normalizeName(d.title) === want);
+    const match = exact.find((d) => d.cover_i) || exact[0];
+    if (!match || !match.key) return null;
+    return {
+      workKey: match.key.startsWith('/works/') ? match.key : `/works/${match.key}`,
+      coverUrl: match.cover_i
+        ? `https://covers.openlibrary.org/b/id/${match.cover_i}-M.jpg`
+        : null,
+    };
+  };
+
+  let found = await findWork(record.title);
+  if (!found) found = await findWork(record.originalTitle);
+  if (found) {
+    workKey = found.workKey;
+    coverUrl = found.coverUrl;
+  }
+
+  let authorKey = null;
+  if (record.author) {
+    try {
+      const r = await resolveAuthorByName(record.author);
+      if (r) authorKey = r.key;
+    } catch {
+      // brak autora nie blokuje reszty rekordu
+    }
+  }
+
+  return { ...record, workKey, authorKey, coverUrl };
 }

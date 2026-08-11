@@ -1,12 +1,15 @@
 import { Router } from 'express';
 import pool from '../db.js';
-import { getBookByISBN, normalizeISBN, resolveAuthorByName, searchCovers } from '../ol.js';
+import { getBookByISBN, normalizeISBN, resolveAuthorByName, searchCovers, enrichBN } from '../ol.js';
 import { getBookFromGoogleByISBN, googleBooksEnabled, searchGoogleBooks } from '../googlebooks.js';
+import { getBookByISBN as getBookFromBNByISBN } from '../bn.js';
 import {
   resolveAuthorByName as resolveAuthorByNameWikidata,
   searchBooks as searchBooksWikidata,
   searchCovers as searchCoversWikidata,
   getBookByISBN as getBookFromWikidataByISBN,
+  hasCyrillic,
+  getAuthorLatinName,
 } from '../wikidata.js';
 
 const router = Router();
@@ -20,6 +23,20 @@ function parseYear(value) {
   if (!value) return null;
   const m = String(value).match(/\b(19|20)\d{2}\b/);
   return m ? Number(m[0]) : null;
+}
+
+// Autor z cyrylicą → dopisz formę łacińską w nawiasie, np.:
+// „Дмитрий Глуховский (Dmitrij Głuchowski)". Bez cyrylicy — bez zmian.
+async function appendAuthorTranscription(author, authorKey) {
+  if (!author || !hasCyrillic(author)) return author;
+  try {
+    const latin = await getAuthorLatinName(authorKey, { fallback: author });
+    if (!latin) return author;
+    if (author.includes(latin)) return author;
+    return `${author} (${latin})`;
+  } catch {
+    return author;
+  }
 }
 
 function rowToBook(row) {
@@ -163,12 +180,30 @@ router.post('/lookup', async (req, res) => {
   try {
     const entry = await getBookByISBN(isbn);
     if (!entry) {
+      const bn = await getBookFromBNByISBN(isbn);
+      if (bn) {
+        const enriched = await enrichBN(bn);
+        return res.json({
+          isbn: enriched.isbn || isbn,
+          title: enriched.title || null,
+          author: await appendAuthorTranscription(
+            enriched.author || 'Nieznany autor',
+            enriched.authorKey
+          ),
+          authorKey: enriched.authorKey || null,
+          workKey: enriched.workKey || null,
+          publisher: enriched.publisher || null,
+          publishYear: enriched.publishYear || null,
+          coverUrl: enriched.coverUrl || null,
+          source: 'bn',
+        });
+      }
       const gb = await getBookFromGoogleByISBN(isbn);
       if (gb) {
         return res.json({
           isbn: gb.isbn,
           title: gb.title,
-          author: gb.author || 'Nieznany autor',
+          author: await appendAuthorTranscription(gb.author || 'Nieznany autor', null),
           authorKey: null,
           workKey: null,
           publisher: gb.publisher,
@@ -179,14 +214,23 @@ router.post('/lookup', async (req, res) => {
       }
       const wd = await getBookFromWikidataByISBN(isbn);
       if (wd) {
-        return res.json({ ...wd, source: 'wikidata' });
+        return res.json({
+          ...wd,
+          author: await appendAuthorTranscription(wd.author || 'Nieznany autor', wd.authorKey),
+          source: 'wikidata',
+        });
       }
-      return res.status(404).json({ error: 'Nie znaleziono książki o tym ISBN (Open Library / Google Books / Wikidata).' });
+      return res.status(404).json({
+        error: 'Nie znaleziono książki o tym ISBN (Open Library / Biblioteka Narodowa / Google Books / Wikidata).',
+      });
     }
     res.json({
       isbn,
       title: entry.title,
-      author: entry.resolved_author_name || entry.authors?.[0]?.name || 'Nieznany autor',
+      author: await appendAuthorTranscription(
+        entry.resolved_author_name || entry.authors?.[0]?.name || 'Nieznany autor',
+        entry.author_key
+      ),
       authorKey: entry.author_key,
       workKey: entry.work_key,
       publisher: entry.publishers?.[0]?.name || null,
@@ -224,33 +268,50 @@ router.post('/', async (req, res) => {
       return res.status(502).json({ error: `Open Library nie odpowiada: ${err.message}` });
     }
     if (!entry) {
-      const gb = await getBookFromGoogleByISBN(record.isbn);
-      if (gb) {
+      const bn = await getBookFromBNByISBN(record.isbn);
+      if (bn) {
+        const enriched = await enrichBN(bn);
         record = {
           ...record,
-          title: gb.title,
-          author: gb.author || 'Nieznany autor',
-          authorKey: null,
-          workKey: null,
-          publisher: gb.publisher,
-          publishYear: gb.publish_year,
-          coverUrl: gb.cover_url,
+          title: enriched.title,
+          author: enriched.author || 'Nieznany autor',
+          authorKey: enriched.authorKey,
+          workKey: enriched.workKey,
+          publisher: enriched.publisher,
+          publishYear: enriched.publishYear,
+          coverUrl: enriched.coverUrl,
         };
       } else {
-        const wd = await getBookFromWikidataByISBN(record.isbn);
-        if (!wd) {
-          return res.status(404).json({ error: 'Nie znaleziono książki o tym ISBN (Open Library / Google Books / Wikidata).' });
+        const gb = await getBookFromGoogleByISBN(record.isbn);
+        if (gb) {
+          record = {
+            ...record,
+            title: gb.title,
+            author: gb.author || 'Nieznany autor',
+            authorKey: null,
+            workKey: null,
+            publisher: gb.publisher,
+            publishYear: gb.publish_year,
+            coverUrl: gb.cover_url,
+          };
+        } else {
+          const wd = await getBookFromWikidataByISBN(record.isbn);
+          if (!wd) {
+            return res.status(404).json({
+              error: 'Nie znaleziono książki o tym ISBN (Open Library / Biblioteka Narodowa / Google Books / Wikidata).',
+            });
+          }
+          record = {
+            ...record,
+            title: wd.title,
+            author: wd.author,
+            authorKey: wd.authorKey,
+            workKey: wd.workKey,
+            publisher: wd.publisher,
+            publishYear: wd.publishYear,
+            coverUrl: wd.coverUrl,
+          };
         }
-        record = {
-          ...record,
-          title: wd.title,
-          author: wd.author,
-          authorKey: wd.authorKey,
-          workKey: wd.workKey,
-          publisher: wd.publisher,
-          publishYear: wd.publishYear,
-          coverUrl: wd.coverUrl,
-        };
       }
     } else {
       record = {
@@ -280,6 +341,8 @@ router.post('/', async (req, res) => {
       // brak dopasowania autora nie blokuje dodania książki
     }
   }
+
+  record.author = await appendAuthorTranscription(record.author, record.authorKey);
 
   if (record.isbn) {
     const [existing] = await pool.query(
@@ -316,7 +379,7 @@ router.put('/:id', async (req, res) => {
   ]);
   if (!existing.length) return res.status(404).json({ error: 'Książka nie istnieje.' });
 
-  const fields = ['title', 'author', 'publisher', 'edition', 'notes', 'status'];
+  const fields = ['title', 'publisher', 'edition', 'notes', 'status'];
   const updates = [];
   const params = [];
   for (const f of fields) {
@@ -347,17 +410,19 @@ router.put('/:id', async (req, res) => {
       updates.push('author_key = ?');
       params.push(body.authorKey || null);
     } else if ('author' in body) {
+      let effectiveAuthor = body.author;
       let resolved = null;
-      if (body.author && body.author !== 'Nieznany autor') {
+      if (effectiveAuthor && effectiveAuthor !== 'Nieznany autor') {
         try {
-          const r = await resolveAuthorByName(body.author);
+          const r = await resolveAuthorByName(effectiveAuthor);
           if (r) resolved = r.key;
         } catch {
           resolved = null;
         }
       }
-      updates.push('author_key = ?');
-      params.push(resolved);
+      effectiveAuthor = await appendAuthorTranscription(effectiveAuthor, resolved);
+      updates.push('author = ?', 'author_key = ?');
+      params.push(effectiveAuthor, resolved);
     }
   }
   if (updates.length) {

@@ -330,7 +330,7 @@ export default function BookForm({ initial = null, onSubmit, onCancel, allowSave
             </button>
           </div>
           <div id={scannerDivId} className="scanner" style={scanning ? undefined : { display: 'none' }} />
-          {lookup === 'loading' && <p className="muted">Szukam danych w Open Library…</p>}
+          {lookup === 'loading' && <p className="muted">Szukam danych (Open Library, Biblioteka Narodowa, Google Books, Wikidata)…</p>}
           {lookup === 'notfound' && (
             <div className="gb-search">
               <p className="muted">
